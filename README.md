@@ -1,89 +1,220 @@
-# netops-mvp —— 最小网络运维 Agent MVP
+# netops-mvp · 最小网络运维 Agent
 
-把课程中"仍然有效"的技术栈，做成一个能**零配置立刻跑通**的最小可运行系统。
+> 一套**零配置即可跑通**的网络运维 Agent 最小实现，把「大模型 + ReAct 循环 + MCP 协议 + RAG 知识库 + Harness 三层权限」落成一个可直接运行、可接入真实环境的最小系统。
 
-## 覆盖的课程技术点
+适用于网络工程师 / 运维工程师快速体验 AI Agent 如何接入网络运维场景；也适合作为学习「Agent 工程化落地」的起点项目。
 
-| 课程章节 | 技术 | 本项目实现 |
-|---|---|---|
-| Ch.2 | 大模型调用 | `llm.py`：OpenAI 兼容 API（豆包/DeepSeek/Qwen/Ollama/OpenAI），无 key 自动降级规则引擎 |
-| Ch.3 | Agent 核心循环（ReAct） | `agent.py`：思考 → Harness 裁决 → MCP 调工具 → 观察 → 再思考 |
-| Ch.4 | MCP 标准协议 | `mcp_tools.py`：官方 MCP SDK，Agent 经 MCP Client 调用 Server 暴露的网络工具 |
-| Ch.6 | Skills/工具封装 | MCP tools：list_devices / get_device_status / run_inspection / apply_config_change / search_kb |
-| Ch.7 | RAG 知识库 | `rag.py`：切块 + TF-IDF 检索，作为 MCP 工具 search_kb 接入 |
-| Ch.8 | 记忆系统 | `memory.py`：Session 短时 + 长期记忆 JSON（跨会话记住设备状态） |
-| Ch.9 | Harness 三层权限 | `harness.py`：只读自主 / 测试确认 / 变更审批 + 审计日志 |
-| Ch.12 | 报告导出 | `report.py`：Markdown / HTML 结构化报告 |
+---
 
-## 快速开始
+## ✨ 功能特性
+
+- **ReAct 核心循环**：Agent 自主「思考 → 调用工具 → 观察 → 再思考」，直到任务完成
+- **MCP 标准协议**：Agent 通过官方 MCP SDK（v2）的 Client ↔ Server 标准通道调用网络工具，而非直接调用函数
+- **Harness 三层权限**：只读（自主执行）/ 测试（人工确认）/ 配置变更（严格审批），全量审计日志
+- **RAG 知识库**：轻量 TF-IDF 检索，把运维知识（排障步骤、命令手册）作为 MCP 工具注入
+- **记忆系统**：Session 短时上下文 + 长期记忆（跨会话记住设备状态）
+- **结构化报告**：自动导出 Markdown / HTML 巡检报告
+- **零配置可跑**：无 API Key 时自动降级为规则引擎，开箱即可端到端演示
+- **可升级真实环境**：接入任一 OpenAI 兼容大模型 + netmiko 连接真实设备即可生产化
+
+---
+
+## 🧭 工作原理
+
+```mermaid
+flowchart LR
+    U[用户 / CLI 指令] --> A[Super Agent<br/>ReAct 核心循环]
+    A --> H[Harness 三层权限<br/>只读 / 测试 / 变更]
+    H -->|放行| M[MCP Client 标准通道]
+    M --> S[MCP Server · netops-mvp]
+    S --> T[list_devices<br/>get_device_status<br/>run_inspection<br/>apply_config_change<br/>search_kb]
+    S --> R[RAG 知识库<br/>TF-IDF 检索]
+    S --> D[模拟设备 / 真实网络设备]
+    A --> Mem[记忆系统<br/>Session + 长期记忆]
+    A --> Rep[报告生成<br/>Markdown / HTML]
+```
+
+一次「全网巡检」任务的完整闭环：
+
+```
+列设备 → 逐台查状态 → 发现接口 down → 检索 RAG 排障知识
+→ ping 测试（人工确认）→ 应用配置变更（人工审批）→ 复核状态 → 生成报告
+```
+
+---
+
+## 🚀 快速开始
+
+要求：Python 3.10+。
 
 ```bash
-cd netops-mvp
+# 1. 克隆 / 进入项目
+git clone https://github.com/munk88/netops.git
+cd netops
+
+# 2. 创建虚拟环境并安装依赖
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
 
-# 方式一：一键端到端演示（无需任何 API key）
+# 3. 一键端到端演示（无需任何 API Key）
 ./.venv/bin/python demo.py
-
-# 方式二：交互式命令行（同样无需 key，自动用规则引擎）
-./.venv/bin/python cli.py
-# 输入示例：
-#   全网巡检并生成报告
-#   ping 测试 R2
-#   接口 down 怎么排障
-#   恢复 R2 接口配置
 ```
 
-演示场景会自动走完：`列设备 → 逐台查状态 → 发现 R2 接口 down → 检索 RAG 知识库 →
-ping 测试（需确认）→ 应用配置变更（需审批）→ 复核状态 → 生成 Markdown/HTML 报告`。
+> demo 会走完「全网巡检 → 排障 → 恢复 → 生成报告」的完整流程，并展示每一步的 Harness 权限裁决与审计记录。
 
-## 接入真实大模型（可选）
+---
 
-编辑 `config.json`，填入任一 OpenAI 兼容服务的参数即可：
+## 💬 交互式使用
 
-- **豆包 / 火山方舟**：`base_url` 填方舟兼容地址，`api_key` 填你的 key，`model` 填模型名
-- **DeepSeek**：`base_url`: `https://api.deepseek.com/v1`，`model`: `deepseek-chat`
-- **OpenAI**：`base_url`: `https://api.openai.com/v1`，`model`: `gpt-4o-mini`
-- **本地 Ollama**：`provider`: `ollama`，`base_url`: `http://localhost:11434/v1`，`model`: 你拉取的模型
+```bash
+./.venv/bin/python cli.py
+```
 
-> 接入真实大模型后，Agent 由"规则引擎"升级为真正的 LLM 推理循环（同一套 MCP 管道）。
+进入对话后输入自然语言指令，例如：
 
-## 接入真实网络设备（可选）
+| 指令 | 触发行为 |
+|---|---|
+| `全网巡检并生成报告` | 列出设备 → 逐台查状态 → 发现故障 → 排障 → 生成报告 |
+| `ping 测试 R2` | 对 R2 执行连通性测试（测试类，需确认） |
+| `接口 down 怎么排障` | 检索 RAG 知识库获取排障步骤 |
+| `恢复 R2 接口配置` | 应用配置变更（高风险，需审批） |
+| `quit` / `exit` | 退出 |
 
-`device.py` 当前为模拟设备。接入真实设备只需把工具内部的 `dev.*` 调用替换为
-**netmiko/Paramiko（SSH）** 或厂商 API 的读写操作，例如：
+### CLI 参数
+
+```bash
+# 单条指令执行后退出（适合脚本调用）
+./.venv/bin/python cli.py --once "全网巡检并生成报告"
+
+# 每次回答后生成 report.md / report.html 到 reports/
+./.venv/bin/python cli.py --report
+
+# 配置变更自动批准（仅演示用，生产勿开）
+./.venv/bin/python cli.py --approve-change
+```
+
+> 交互模式下，测试操作会询问 `[y/N]`，配置变更要求输入 `APPROVE` 才执行；非交互模式（管道/`--once`）会自动确认并给出告警提示。
+
+---
+
+## 📄 报告输出
+
+运行后生成到 `reports/`：
+
+- `report.md` —— Markdown 版本
+- `report.html` —— HTML 版本（浏览器直接打开）
+
+报告包含：生成时间、完整执行轨迹（每次工具调用、参数、观察结果、权限裁决）、最终结论。
+
+---
+
+## 🔌 接入真实大模型（可选）
+
+编辑 `config.json`，填入任一 **OpenAI 兼容** 服务的参数即可：
+
+```json
+{
+  "provider": "openai_compatible",
+  "base_url": "https://api.deepseek.com/v1",
+  "api_key": "sk-xxxx",
+  "model": "deepseek-chat",
+  "temperature": 0.3,
+  "timeout": 60
+}
+```
+
+| 服务 | base_url | model 示例 |
+|---|---|---|
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 豆包 / 火山方舟 | 方舟兼容地址 | 你的模型名 |
+| 本地 Ollama | `http://localhost:11434/v1` | `qwen2.5:7b`（需设 `provider: ollama`） |
+
+> 接入真实大模型后，Agent 由「规则引擎」升级为真正的 LLM 推理循环，MCP 工具管道不变。
+
+---
+
+## 🌐 接入真实网络设备（可选）
+
+`netops_agent/device.py` 当前为**模拟设备**（内置 R1 / R2 / SW1 三台）。接入真实设备只需把工具内部的 `dev.*` 调用替换为 netmiko/SSH 读写，例如：
 
 ```python
 from netmiko import ConnectHandler
-conn = ConnectHandler(device_type="huawei", ip="10.0.0.1", username="u", password="p")
-conn.send_command("display interface brief")   # 只读
-conn.send_config_set(["interface GE0/0/0", "shutdown", "no shutdown"])  # 变更
+
+conn = ConnectHandler(
+    device_type="huawei",
+    ip="10.0.0.1",
+    username="admin",
+    password="****",
+)
+
+# 只读操作
+conn.send_command("display interface brief")
+
+# 配置变更
+conn.send_config_set(["interface GE0/0/0", "shutdown", "no shutdown"])
 ```
 
-## 生产化注意（Harness 原则）
+---
 
-- `--approve-change` 仅用于演示；生产环境配置变更必须**人工审批 + 双人复核**。
-- 审计日志 `audit.jsonl` 全量记录每一次工具调用的时间、参数与裁决，务必保留。
-- 接入真实设备后，建议只读工具用只读账号、变更工具走提权 + 审批流。
+## 🛡️ 安全设计（Harness 三层权限）
 
-## 目录结构
+| 层级 | 示例 | 执行方式 |
+|---|---|---|
+| 只读分析 | 读日志 / 查状态 / 检索知识库 | Agent 自主执行 |
+| 测试与采集 | ping / 连通性验证 | 人工确认后执行 |
+| 配置变更 | 改参数 / 复位接口 / 升级固件 | 严格审批，禁止自主 |
+
+落地机制：
+
+- 每个工具声明权限级别，调用前必经 `harness.check()` 裁决
+- 配置变更默认要求显式批准（交互输入 `APPROVE`）
+- 全量审计日志写入 `audit.jsonl`（时间 / 工具 / 参数 / 裁决）
+- 接入真实设备后，建议只读用只读账号、变更走提权 + 双人复核
+
+---
+
+## 📁 项目结构
 
 ```
 netops-mvp/
 ├── cli.py                 # 交互式命令行入口
 ├── demo.py                # 一键端到端演示
 ├── config.json            # 大模型配置（留空走规则引擎）
-├── requirements.txt
+├── requirements.txt       # 依赖（requests + mcp）
 ├── netops_agent/
-│   ├── agent.py           # ReAct 核心循环
-│   ├── llm.py             # LLM 客户端 + 规则降级
-│   ├── mcp_tools.py       # MCP Server + 工具封装
-│   ├── harness.py         # Harness 三层权限 + 审计
-│   ├── rag.py             # 最小 RAG（TF-IDF）
+│   ├── __init__.py
+│   ├── agent.py           # ReAct 核心循环（思考→裁决→MCP调用→观察）
+│   ├── llm.py             # LLM 客户端（OpenAI 兼容）+ 规则降级引擎
+│   ├── mcp_tools.py       # MCP Server + 网络运维工具封装
+│   ├── harness.py         # Harness 三层权限 + 审计日志
+│   ├── rag.py             # 最小 RAG（切块 + TF-IDF 检索）
 │   ├── memory.py          # Session + 长期记忆
 │   ├── device.py          # 模拟设备（可替换为 netmiko）
-│   └── report.py          # Markdown/HTML 报告
-├── reports/               # 生成的报告（demo 运行后出现）
-├── audit.jsonl            # Harness 审计日志
-└── memory.json            # 长期记忆
+│   └── report.py          # Markdown / HTML 报告生成
+├── reports/               # 生成的报告（git 忽略）
+├── audit.jsonl            # Harness 审计日志（git 忽略）
+└── memory.json            # 长期记忆（git 忽略）
 ```
+
+---
+
+## ❓ 常见问题
+
+**没有 API Key 能跑吗？**
+能。未配置 `config.json` 时自动使用内置规则引擎，完整演示管道，零密钥可跑。
+
+**MCP 用的是什么版本？**
+官方 `mcp>=2.0` SDK（即 2026 年无状态大改版后的新架构，`MCPServer` + `Client`）。
+
+**RAG 为什么用 TF-IDF 而不是向量库？**
+MVP 为保持零重依赖用纯 Python 实现；`rag.py` 的 `search()` 接口与真实 embedding + 向量库对齐，可直接替换。
+
+**如何恢复模拟设备的初始状态？**
+`device.py` 提供 `reset()`；或直接删除运行产物 `audit.jsonl`、`memory.json`、`reports/` 后重新运行 demo。
+
+---
+
+## 📄 License
+
+MIT
