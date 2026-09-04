@@ -1,0 +1,8 @@
+{
+  "provider": "openai_compatible",
+  "base_url": "",
+  "api_key": "",
+  "model": "gpt-4o-mini",
+  "temperature": 0.3,
+  "timeout": 60
+}
