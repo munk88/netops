@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>netops-mvp · 网络运维 Agent 控制台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">⛁</span>
+    <div>
+      <div class="title">网络运维 Agent 控制台</div>
+      <div class="sub">ReAct + MCP + Harness + RAG · netops-mvp</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="mode-badge" class="badge badge-neutral">模式：读取中…</span>
+    <span id="conn-badge" class="badge badge-neutral">● 未连接</span>
+    <button id="btn-quick" class="btn btn-primary">一键巡检</button>
+    <button id="btn-clear" class="btn btn-ghost">清空</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 左：对话 -->
+  <section class="panel chat-panel">
+    <div class="panel-head">
+      <span>对话指令</span>
+      <span class="hint">像聊天一样给 Agent 下运维指令</span>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <input id="chat-input" type="text" placeholder="例如：全网巡检并生成报告，或 ping 测试 R2"
+             autocomplete="off" spellcheck="false">
+      <button id="btn-send" class="btn btn-primary">发送</button>
+    </div>
+    <div class="chat-suggest">
+      <button class="chip" data-msg="列出所有设备">列出所有设备</button>
+      <button class="chip" data-msg="接口 down 怎么排障">接口 down 排障</button>
+      <button class="chip" data-msg="恢复 R2 接口配置">恢复 R2 接口配置</button>
+      <button class="chip" data-msg="全网巡检并生成报告">全网巡检</button>
+    </div>
+  </section>
+
+  <!-- 中：执行轨迹 -->
+  <section class="panel trace-panel">
+    <div class="panel-head">
+      <span>Agent 执行轨迹</span>
+      <span class="hint">实时流式 · 每步显示权限裁决与观察</span>
+    </div>
+    <div id="trace" class="trace">
+      <div class="trace-empty">运行一条指令后，这里会实时展示 Agent 的每一步动作。</div>
+    </div>
+  </section>
+
+  <!-- 右：仪表盘 + 报告 -->
+  <section class="side">
+    <div class="panel">
+      <div class="panel-head">
+        <span>设备状态</span>
+        <span class="hint" id="device-ts"></span>
+      </div>
+      <div id="devices" class="devices"></div>
+    </div>
+    <div class="panel report-panel">
+      <div class="panel-head">
+        <span>巡检报告</span>
+        <a id="report-link" href="#" target="_blank" class="hint" style="display:none">打开 HTML 报告 ↗</a>
+      </div>
+      <pre id="report" class="report">运行「全网巡检并生成报告」后，这里展示最新报告。</pre>
+    </div>
+  </section>
+</main>
+
+<!-- 确认弹窗 -->
+<div id="confirm-modal" class="modal-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <span id="confirm-level-badge" class="badge badge-change">变更·需审批</span>
+      <span class="modal-title">Harness 人工确认</span>
+    </div>
+    <div class="modal-body">
+      <p>Agent 请求执行高风险操作，需你确认后才继续：</p>
+      <pre id="confirm-title" class="confirm-title"></pre>
+      <div class="modal-actions">
+        <button id="btn-reject" class="btn btn-danger">拒绝</button>
+        <button id="btn-approve" class="btn btn-approve">批准</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

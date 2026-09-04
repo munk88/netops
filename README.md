@@ -97,6 +97,28 @@ python3 -m venv .venv
 
 ---
 
+## 🖥️ Web 控制台（推荐，含前端页面）
+
+本地启动一个带前端页面的可视化控制台，浏览器即可操作：
+
+```bash
+./.venv/bin/python webapp.py
+```
+
+然后打开 **http://127.0.0.1:8000**。
+
+页面提供：
+
+- **对话指令**：像聊天一样下运维指令（支持快捷指令 chips）
+- **实时执行轨迹**：SSE 流式展示 Agent 每一步（工具调用 / 参数 / Harness 权限裁决 / 观察结果）
+- **Harness 确认弹窗**：测试与配置变更直接在页面上「批准 / 拒绝」，不用敲命令行
+- **设备状态仪表盘**：R1 / R2 / SW1 三台设备的 CPU、内存、接口实时刷新
+- **巡检报告**：运行「全网巡检并生成报告」后自动展示 Markdown 报告，可一键打开 HTML 版
+
+技术栈：FastAPI + SSE（后端）＋原生 HTML/CSS/JS（前端，零构建），完全本地运行、无需部署联网。
+
+---
+
 ## 📄 报告输出
 
 运行后生成到 `reports/`：
@@ -180,14 +202,16 @@ conn.send_config_set(["interface GE0/0/0", "shutdown", "no shutdown"])
 netops-mvp/
 ├── cli.py                 # 交互式命令行入口
 ├── demo.py                # 一键端到端演示
+├── webapp.py              # Web 控制台后端（FastAPI + SSE）
 ├── config.json            # 大模型配置（留空走规则引擎）
-├── requirements.txt       # 依赖（requests + mcp）
+├── requirements.txt       # 依赖（requests + mcp + fastapi + uvicorn）
+├── static/                # Web 控制台前端（index.html / style.css / app.js）
 ├── netops_agent/
 │   ├── __init__.py
 │   ├── agent.py           # ReAct 核心循环（思考→裁决→MCP调用→观察）
 │   ├── llm.py             # LLM 客户端（OpenAI 兼容）+ 规则降级引擎
 │   ├── mcp_tools.py       # MCP Server + 网络运维工具封装
-│   ├── harness.py         # Harness 三层权限 + 审计日志
+│   ├── harness.py         # Harness 三层权限 + 审计日志（同步/异步双裁决）
 │   ├── rag.py             # 最小 RAG（切块 + TF-IDF 检索）
 │   ├── memory.py          # Session + 长期记忆
 │   ├── device.py          # 模拟设备（可替换为 netmiko）

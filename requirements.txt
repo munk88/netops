@@ -1,2 +1,4 @@
 requests>=2.31
 mcp>=2.0
+fastapi>=0.115
+uvicorn[standard]>=0.30

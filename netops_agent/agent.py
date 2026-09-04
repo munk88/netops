@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 
 from mcp.client import Client
 
@@ -49,9 +50,9 @@ class Agent:
         self._max_steps = max_steps
         self.trace: list[dict] = []
 
-    # -- 供 CLI 等设置确认函数 --
+    # -- 供 CLI / Web 等设置确认函数 --
     def set_confirm_fn(self, fn: ConfirmFn | None) -> None:
-        self._harness._confirm_fn = fn  # noqa: SLF001
+        self._harness.confirm_fn = fn
 
     def _system_prompt(self) -> str:
         tools = "\n".join(
@@ -66,8 +67,12 @@ class Agent:
             longterm=longterm,
         )
 
-    async def run(self, user_input: str) -> dict:
-        """执行一次用户请求，返回 {answer, steps}。"""
+    async def run(
+        self,
+        user_input: str,
+        on_step: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> dict:
+        """执行一次用户请求，返回 {answer, steps}。on_step 为每步回调（用于流式推送）。"""
         self.trace = []
         system = self._system_prompt()
         messages: list[dict] = [{"role": "system", "content": system}]
@@ -87,24 +92,31 @@ class Agent:
                 if kind == "final":
                     answer = text
                     steps.append({"kind": "final", "content": text})
+                    if on_step:
+                        await on_step({"kind": "final", "content": text})
                     break
 
                 if call is None:  # 解析失败
                     answer = text
                     steps.append({"kind": "error", "content": text})
+                    if on_step:
+                        await on_step({"kind": "error", "content": text})
                     break
 
                 name, args = call["name"], call.get("arguments") or {}
 
-                # 1) Harness 权限裁决
-                allowed, note = self._harness.check(name, args)
+                # 1) Harness 权限裁决（异步，支持 Web 弹窗确认）
+                allowed, note = await self._harness.acheck(name, args)
                 if not allowed:
                     obs = f"工具 {name} 未执行：{note}"
                     messages += [
                         {"role": "assistant", "content": raw},
                         {"role": "tool", "content": obs},
                     ]
-                    steps.append({"kind": "blocked", "tool": name, "note": note})
+                    step = {"kind": "blocked", "tool": name, "note": note}
+                    steps.append(step)
+                    if on_step:
+                        await on_step(step)
                     continue
 
                 # 2) 经 MCP 标准通道调用工具
@@ -123,15 +135,16 @@ class Agent:
                     {"role": "assistant", "content": raw},
                     {"role": "tool", "content": text_result},
                 ]
-                steps.append(
-                    {
-                        "kind": "tool",
-                        "tool": name,
-                        "args": args,
-                        "note": note,
-                        "observation": text_result,
-                    }
-                )
+                step = {
+                    "kind": "tool",
+                    "tool": name,
+                    "args": args,
+                    "note": note,
+                    "observation": text_result,
+                }
+                steps.append(step)
+                if on_step:
+                    await on_step(step)
             else:
                 answer = f"达到最大步数（{self._max_steps}）仍未完成，请简化任务。"
 
