@@ -101,6 +101,7 @@ class RuleLLM:
         self._seen = {}
         self._devices = []
         self._down = None
+        self._kb_query: str | None = None  # 纯知识问答时记录检索 query
 
     def _last_obs(self) -> str:
         for m in reversed(self._messages):
@@ -119,14 +120,41 @@ class RuleLLM:
             ]
         elif "ping" in t.lower() or "连通" in t or "测试" in t:
             self._plan = [("run_inspection", {"device": "R2", "kind": "ping"})]
+        elif self._kb_topic(t):
+            self._plan = [("search_kb", {"query": self._kb_topic(t)})]
+            self._kb_query = self._kb_topic(t)
         elif "接口" in t or "down" in t.lower() or "排障" in t or "故障" in t:
             self._plan = [("search_kb", {"query": "接口 down 排障"})]
+            self._kb_query = "接口 down 排障"
         else:
             self._plan = [("search_kb", {"query": t})]
+            self._kb_query = t
+
+    # -- 知识主题映射（对 knowledge/ 目录文档） --
+    _KB_TOPICS = (
+        ("bgp", "BGP 邻居排障"),
+        ("ospf", "OSPF 邻居排障"),
+        ("端口安全", "端口安全 排障"),
+        ("port-security", "端口安全 排障"),
+        ("cpu", "CPU 利用率过高 排障"),
+        ("固件", "固件升级 注意事项"),
+        ("升级", "固件升级 注意事项"),
+    )
+
+    def _kb_topic(self, t: str) -> str | None:
+        low = t.lower()
+        for kw, q in self._KB_TOPICS:
+            if kw.lower() in low:
+                return q
+        return None
 
     # -- 反应式决策 --
     def _react(self) -> None:
         obs = self._last_obs()
+        # 纯知识问答：search_kb 执行完即结束循环，进入最终总结
+        if self._kb_query and "search_kb" in self._seen:
+            self._plan = []
+            return
         if "list_devices" in self._seen and "get_device_status" not in self._seen:
             self._devices = self._extract_list(obs) or ["R1", "R2", "SW1"]
             self._plan = [("get_device_status", {"device": d}) for d in self._devices]
@@ -182,6 +210,7 @@ class RuleLLM:
     def _final_answer(self) -> str:
         summary: dict[str, dict] = {}
         pings: list[str] = []
+        kb: list[str] = []
         for m in self._messages:
             if m.get("role") != "tool":
                 continue
@@ -198,6 +227,10 @@ class RuleLLM:
                     f"- {obj['device']} ping {obj.get('target','')}: reachable={obj['reachable']} "
                     f"loss={obj['loss_percent']}% rtt={obj.get('rtt_ms','-')}ms"
                 )
+            # 知识库检索结果（含来源溯源）
+            if "results" in obj and isinstance(obj["results"], list):
+                for h in obj["results"]:
+                    kb.append(f"[{h.get('source','?')}] {h.get('text','')}")
         lines: list[str] = []
         for d, obj in summary.items():
             lines.append(
@@ -208,6 +241,9 @@ class RuleLLM:
         lines.extend(pings)
         if self._down:
             lines.append(f"- 发现问题：{self._down[0]} 接口 {self._down[1]} down，已按知识库排障并尝试恢复。")
+        if kb:
+            lines.append("知识库检索结果（含来源）：")
+            lines.extend(f"  - {k}" for k in kb[:4])
         body = "\n".join(lines) or "未获取到可汇总的数据。"
         return f"{FINAL_PREFIX} 处理完成，汇总如下：\n{body}"
 

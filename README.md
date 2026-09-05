@@ -11,7 +11,7 @@
 - **ReAct 核心循环**：Agent 自主「思考 → 调用工具 → 观察 → 再思考」，直到任务完成
 - **MCP 标准协议**：Agent 通过官方 MCP SDK（v2）的 Client ↔ Server 标准通道调用网络工具，而非直接调用函数
 - **Harness 三层权限**：只读（自主执行）/ 测试（人工确认）/ 配置变更（严格审批），全量审计日志
-- **RAG 知识库**：轻量 TF-IDF 检索，把运维知识（排障步骤、命令手册）作为 MCP 工具注入
+- **RAG 知识库**：知识外置 + TF-IDF 检索，`knowledge/` 目录放文档即自动建索引，检索结果带来源溯源
 - **记忆系统**：Session 短时上下文 + 长期记忆（跨会话记住设备状态）
 - **结构化报告**：自动导出 Markdown / HTML 巡检报告
 - **零配置可跑**：无 API Key 时自动降级为规则引擎，开箱即可端到端演示
@@ -94,6 +94,25 @@ python3 -m venv .venv
 ```
 
 > 交互模式下，测试操作会询问 `[y/N]`，配置变更要求输入 `APPROVE` 才执行；非交互模式（管道/`--once`）会自动确认并给出告警提示。
+
+---
+
+## 📚 知识库（RAG，知识外置）
+
+知识库**不写在代码里**：把运维文档放进 `knowledge/` 目录（`.md` / `.txt` / `.rst`，支持子目录），Agent 启动即自动建索引，`search_kb` 工具即可检索到，检索结果带「来源文件名」溯源。
+
+```bash
+# 查看知识库状态（模式 / 知识块数 / 来源文件）
+./.venv/bin/python -m netops_agent.rag --status
+
+# 放新文档后重建索引（服务运行中也会自动检测目录变化）
+./.venv/bin/python -m netops_agent.rag --rebuild
+
+# 检索测试
+./.venv/bin/python -m netops_agent.rag --query "BGP 邻居起不来"
+```
+
+示例：`knowledge/` 已内置 7 份排障文档（接口 down / 端口安全 / OSPF / BGP / 巡检命令 / CPU / 固件升级）。目录为空时自动回退到内置示例知识。检索实现目前为 TF-IDF（零重依赖），`search(query, top_k)` 接口与真实向量库对齐，可无缝升级为 embedding + 向量库。
 
 ---
 
@@ -206,6 +225,7 @@ netops-mvp/
 ├── config.json            # 大模型配置（留空走规则引擎）
 ├── requirements.txt       # 依赖（requests + mcp + fastapi + uvicorn）
 ├── static/                # Web 控制台前端（index.html / style.css / app.js）
+├── knowledge/             # 运维知识库文档（.md/.txt，可自行增删）
 ├── netops_agent/
 │   ├── __init__.py
 │   ├── agent.py           # ReAct 核心循环（思考→裁决→MCP调用→观察）
@@ -236,6 +256,9 @@ MVP 为保持零重依赖用纯 Python 实现；`rag.py` 的 `search()` 接口�
 
 **如何恢复模拟设备的初始状态？**
 `device.py` 提供 `reset()`；或直接删除运行产物 `audit.jsonl`、`memory.json`、`reports/` 后重新运行 demo。
+
+**怎么往知识库里加自己的运维文档？**
+把 `.md` / `.txt` 文档放进 `knowledge/` 目录（可建子目录），运行 `./.venv/bin/python -m netops_agent.rag --rebuild` 重建索引即可；运行中的 Web 服务也会在下一次检索时自动检测目录变化并重建。
 
 ---
 
